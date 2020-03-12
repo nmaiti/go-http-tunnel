@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	mylog "log"
 	"net"
 	"net/http"
 	"strings"
@@ -54,6 +55,7 @@ type Server struct {
 	httpClient *http.Client
 	logger     log.Logger
 	vhostMuxer *vhost.TLSMuxer
+	idname     string
 }
 
 // NewServer creates a new Server.
@@ -158,6 +160,7 @@ func (s *Server) disconnected(identifier id.ID) {
 	s.logger.Log(
 		"level", 1,
 		"action", "disconnected",
+		"name-id", s.idname,
 		"identifier", identifier,
 	)
 
@@ -170,6 +173,7 @@ func (s *Server) disconnected(identifier id.ID) {
 			"level", 2,
 			"action", "close listener",
 			"identifier", identifier,
+			"name-id", s.idname,
 			"addr", l.Addr(),
 		)
 		l.Close()
@@ -233,7 +237,7 @@ func (s *Server) handleClient(conn net.Conn) {
 		identifier id.ID
 		req        *http.Request
 		resp       *http.Response
-		tunnels    map[string]*proto.Tunnel
+		tunnels    TunnelExt
 		err        error
 		ok         bool
 
@@ -241,6 +245,7 @@ func (s *Server) handleClient(conn net.Conn) {
 	)
 
 	tlsConn, ok := conn.(*tls.Conn)
+
 	if !ok {
 		logger.Log(
 			"level", 0,
@@ -251,6 +256,7 @@ func (s *Server) handleClient(conn net.Conn) {
 	}
 
 	identifier, err = id.PeerID(tlsConn)
+
 	if err != nil {
 		logger.Log(
 			"level", 2,
@@ -263,7 +269,7 @@ func (s *Server) handleClient(conn net.Conn) {
 	logger = logger.With("identifier", identifier)
 
 	if s.config.AutoSubscribe {
-		s.Subscribe(identifier)
+		s.Subscribe(identifier, tunnels.IdName)
 	} else if !s.IsSubscribed(identifier) {
 		logger.Log(
 			"level", 2,
@@ -346,7 +352,13 @@ func (s *Server) handleClient(conn net.Conn) {
 		goto reject
 	}
 
-	if len(tunnels) == 0 {
+	s.idname = tunnels.IdName
+
+	if s.idname != "" {
+		mylog.Printf("-- client name identifier %+v --", s.idname)
+	}
+
+	if len(tunnels.Tunnels) == 0 {
 		err = fmt.Errorf("No tunnels")
 		logger.Log(
 			"level", 2,
@@ -356,7 +368,7 @@ func (s *Server) handleClient(conn net.Conn) {
 		goto reject
 	}
 
-	if err = s.addTunnels(tunnels, identifier); err != nil {
+	if err = s.addTunnels(tunnels.Tunnels, identifier); err != nil {
 		logger.Log(
 			"level", 2,
 			"msg", "handshake failed",
@@ -365,9 +377,14 @@ func (s *Server) handleClient(conn net.Conn) {
 		goto reject
 	}
 
+	if s.idname == "" {
+		s.idname = "unknown-name"
+	}
+
 	logger.Log(
 		"level", 1,
 		"action", "connected",
+		"name-id", s.idname,
 	)
 
 	return
@@ -398,7 +415,7 @@ func (s *Server) notifyError(serverError error, identifier id.ID) {
 			"level", 2,
 			"action", "client error notification failed",
 			"identifier", identifier,
-			"err", err,
+			"name-id", s.idname,
 		)
 		return
 	}
@@ -435,6 +452,7 @@ func (s *Server) addTunnels(tunnels map[string]*proto.Tunnel, identifier id.ID) 
 				"level", 2,
 				"action", "open listener",
 				"identifier", identifier,
+				"name-id", s.idname,
 				"addr", l.Addr(),
 			)
 
@@ -454,6 +472,7 @@ func (s *Server) addTunnels(tunnels map[string]*proto.Tunnel, identifier id.ID) 
 				"level", 2,
 				"action", "add SNI vhost",
 				"identifier", identifier,
+				"name-id", s.idname,
 				"host", t.Host,
 			)
 
@@ -485,9 +504,9 @@ rollback:
 
 // Unsubscribe removes client from registry, disconnects client if already
 // connected and returns it's RegistryItem.
-func (s *Server) Unsubscribe(identifier id.ID) *RegistryItem {
+func (s *Server) Unsubscribe(identifier id.ID, idname string) *RegistryItem {
 	s.connPool.DeleteConn(identifier)
-	return s.registry.Unsubscribe(identifier)
+	return s.registry.Unsubscribe(identifier, idname)
 }
 
 // Ping measures the RTT response time.
@@ -507,6 +526,7 @@ func (s *Server) listen(l net.Listener, identifier id.ID) {
 					"level", 2,
 					"action", "listener closed",
 					"identifier", identifier,
+					"name-id", s.idname,
 					"addr", addr,
 				)
 				return
@@ -516,6 +536,7 @@ func (s *Server) listen(l net.Listener, identifier id.ID) {
 				"level", 0,
 				"msg", "accept of connection failed",
 				"identifier", identifier,
+				"name-id", s.idname,
 				"addr", addr,
 				"err", err,
 			)
@@ -542,6 +563,7 @@ func (s *Server) listen(l net.Listener, identifier id.ID) {
 				"level", 1,
 				"msg", "TCP keepalive for tunneled connection failed",
 				"identifier", identifier,
+				"name-id", s.idname,
 				"ctrlMsg", msg,
 				"err", err,
 			)
@@ -553,6 +575,7 @@ func (s *Server) listen(l net.Listener, identifier id.ID) {
 					"level", 0,
 					"msg", "proxy error",
 					"identifier", identifier,
+					"name-id", s.idname,
 					"ctrlMsg", msg,
 					"err", err,
 				)
@@ -644,6 +667,7 @@ func (s *Server) proxyConn(identifier id.ID, conn net.Conn, msg *proto.ControlMe
 		"level", 2,
 		"action", "proxy conn",
 		"identifier", identifier,
+		"name-id", s.idname,
 		"ctrlMsg", msg,
 	)
 
@@ -693,6 +717,7 @@ func (s *Server) proxyConn(identifier id.ID, conn net.Conn, msg *proto.ControlMe
 		"level", 2,
 		"action", "proxy conn done",
 		"identifier", identifier,
+		"name-id", s.idname,
 		"ctrlMsg", msg,
 	)
 
@@ -704,6 +729,7 @@ func (s *Server) proxyHTTP(identifier id.ID, r *http.Request, msg *proto.Control
 		"level", 2,
 		"action", "proxy HTTP",
 		"identifier", identifier,
+		"name-id", s.idname,
 		"ctrlMsg", msg,
 	)
 
@@ -724,6 +750,7 @@ func (s *Server) proxyHTTP(identifier id.ID, r *http.Request, msg *proto.Control
 				"level", 0,
 				"msg", "proxy error",
 				"identifier", identifier,
+				"name-id", s.idname,
 				"ctrlMsg", msg,
 				"err", err,
 			)
@@ -733,6 +760,7 @@ func (s *Server) proxyHTTP(identifier id.ID, r *http.Request, msg *proto.Control
 			"level", 3,
 			"action", "transferred",
 			"identifier", identifier,
+			"name-id", s.idname,
 			"bytes", cw.count,
 			"dir", "user to client",
 			"dst", r.Host,
@@ -753,6 +781,7 @@ func (s *Server) proxyHTTP(identifier id.ID, r *http.Request, msg *proto.Control
 		"level", 2,
 		"action", "proxy HTTP done",
 		"identifier", identifier,
+		"name-id", s.idname,
 		"ctrlMsg", msg,
 		"status code", resp.StatusCode,
 	)

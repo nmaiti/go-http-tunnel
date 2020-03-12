@@ -53,7 +53,7 @@ func newRegistry(logger log.Logger) *registry {
 var voidRegistryItem = &RegistryItem{}
 
 // Subscribe allows to connect client with a given identifier.
-func (r *registry) Subscribe(identifier id.ID) {
+func (r *registry) Subscribe(identifier id.ID, idname string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -61,11 +61,20 @@ func (r *registry) Subscribe(identifier id.ID) {
 		return
 	}
 
-	r.logger.Log(
-		"level", 1,
-		"action", "subscribe",
-		"identifier", identifier,
-	)
+	if idname == "" {
+		r.logger.Log(
+			"level", 1,
+			"action", "subscribe",
+			"identifier", identifier,
+		)
+	} else {
+		r.logger.Log(
+			"level", 1,
+			"action", "subscribe",
+			"identifier", identifier,
+			"id-name", idname,
+		)
+	}
 
 	r.items[identifier] = voidRegistryItem
 }
@@ -92,7 +101,7 @@ func (r *registry) Subscriber(hostPort string) (id.ID, *Auth, bool) {
 }
 
 // Unsubscribe removes client from registry and returns it's RegistryItem.
-func (r *registry) Unsubscribe(identifier id.ID) *RegistryItem {
+func (r *registry) Unsubscribe(identifier id.ID, idname string) *RegistryItem {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -101,10 +110,15 @@ func (r *registry) Unsubscribe(identifier id.ID) *RegistryItem {
 		return nil
 	}
 
+	if idname == "" {
+		idname = "UNKNOWN"
+	}
+
 	r.logger.Log(
 		"level", 1,
 		"action", "unsubscribe",
 		"identifier", identifier,
+		"id-name", idname,
 	)
 
 	if i.Hosts != nil {

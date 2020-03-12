@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/net/http2"
 
-	"github.com/mmatczuk/go-http-tunnel"
+	tunnel "github.com/mmatczuk/go-http-tunnel"
 	"github.com/mmatczuk/go-http-tunnel/id"
 	"github.com/mmatczuk/go-http-tunnel/log"
 )
@@ -61,7 +61,7 @@ func main() {
 			if err != nil {
 				fatal("invalid identifier %q: %s", c, err)
 			}
-			server.Subscribe(identifier)
+			server.Subscribe(identifier, "")
 		}
 	}
 

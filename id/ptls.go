@@ -11,7 +11,6 @@ import (
 
 var emptyID [32]byte
 
-// PeerID is modified https://github.com/andrew-d/ptls/blob/b89c7dcc94630a77f225a48befd3710144c7c10e/ptls.go#L81
 func PeerID(conn *tls.Conn) (ID, error) {
 	// Try a TLS connection over the given connection. We explicitly perform
 	// the handshake, since we want to maintain the invariant that, if this

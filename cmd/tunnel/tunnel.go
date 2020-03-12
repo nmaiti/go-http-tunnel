@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cenkalti/backoff"
-	"github.com/mmatczuk/go-http-tunnel"
+	tunnel "github.com/mmatczuk/go-http-tunnel"
 	"github.com/mmatczuk/go-http-tunnel/id"
 	"github.com/mmatczuk/go-http-tunnel/log"
 	"github.com/mmatczuk/go-http-tunnel/proto"
@@ -35,6 +35,13 @@ func main() {
 	}
 
 	logger := log.NewFilterLogger(log.NewStdLogger(), opts.logLevel)
+
+	// initialice idname
+	idName := ""
+	if opts.id != "" {
+		idName = opts.id
+		logger.Log("Cliente ID:", opts.id)
+	}
 
 	// read configuration file
 	config, err := loadClientConfigFromFile(opts.config)
@@ -102,6 +109,7 @@ func main() {
 		Tunnels:         tunnels(config.Tunnels),
 		Proxy:           proxy(config.Tunnels, logger),
 		Logger:          logger,
+		IdName:          idName,
 	})
 	if err != nil {
 		fatal("failed to create client: %s", err)

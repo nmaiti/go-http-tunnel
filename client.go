@@ -40,6 +40,13 @@ type ClientConfig struct {
 	Proxy ProxyFunc
 	// Logger is optional logger. If nil logging is disabled.
 	Logger log.Logger
+	// Idname is optional easy-identifier.
+	IdName string
+}
+
+type TunnelExt struct {
+	IdName  string
+	Tunnels map[string]*proto.Tunnel
 }
 
 // Client is responsible for creating connection to the server, handling control
@@ -297,7 +304,18 @@ func (c *Client) handleHandshake(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 
-	b, err := json.Marshal(c.config.Tunnels)
+	// te := TunnelExt{
+	// 	IdName:  "pepito",
+	// 	Tunnels: c.config.Tunnels,
+	// }
+
+	te := TunnelExt{
+		IdName:  c.config.IdName,
+		Tunnels: c.config.Tunnels,
+	}
+
+	// b, err := json.Marshal(c.config.Tunnels)
+	b, err := json.Marshal(te)
 	if err != nil {
 		c.logger.Log(
 			"level", 0,
@@ -306,6 +324,7 @@ func (c *Client) handleHandshake(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+	// Datadope function
 	w.Write(b)
 }
 
