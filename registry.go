@@ -16,8 +16,10 @@ import (
 // RegistryItem holds information about hosts and listeners associated with a
 // client.
 type RegistryItem struct {
-	Hosts     []*HostAuth
-	Listeners []net.Listener
+	Hosts         []*HostAuth
+	Listeners     []net.Listener
+	ListenerNames []string
+	ClientName    string
 }
 
 // HostAuth holds host and authentication info.
@@ -50,7 +52,7 @@ func newRegistry(logger log.Logger) *registry {
 	}
 }
 
-var voidRegistryItem = &RegistryItem{}
+//var voidRegistryItem = &RegistryItem{}
 
 // Subscribe allows to connect client with a given identifier.
 func (r *registry) Subscribe(identifier id.ID, idname string) {
@@ -76,7 +78,7 @@ func (r *registry) Subscribe(identifier id.ID, idname string) {
 		)
 	}
 
-	r.items[identifier] = voidRegistryItem
+	r.items[identifier] = &RegistryItem{ClientName: idname}
 }
 
 // IsSubscribed returns true if client is subscribed.
@@ -133,22 +135,26 @@ func (r *registry) Unsubscribe(identifier id.ID, idname string) *RegistryItem {
 }
 
 func (r *registry) set(i *RegistryItem, identifier id.ID) error {
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	//j, ok := r.items[identifier]
+	j, ok := r.items[identifier]
+	if !ok {
+		fmt.Printf("ERROR in Registry Set: ITEM %#+v\n", j)
+		return errClientNotSubscribed
+	}
+
+	/*if strings.Compare(j.ClientName, i.ClientName) == 0 {
+		return fmt.Errorf("attempt to overwrite registry item [%s] for [%s]", i.ClientName, j.ClientName)
+	}*/
+
 	r.logger.Log(
 		"level", 2,
 		"action", "set registry item",
 		"identifier", identifier,
 	)
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	j, ok := r.items[identifier]
-	if !ok {
-		return errClientNotSubscribed
-	}
-	if j != voidRegistryItem {
-		return fmt.Errorf("attempt to overwrite registry item")
-	}
 
 	if i.Hosts != nil {
 		for _, h := range i.Hosts {
@@ -174,19 +180,26 @@ func (r *registry) set(i *RegistryItem, identifier id.ID) error {
 }
 
 func (r *registry) clear(identifier id.ID) *RegistryItem {
-	r.logger.Log(
-		"level", 2,
-		"action", "clear registry item",
-		"identifier", identifier,
-	)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	i, ok := r.items[identifier]
-	if !ok || i == voidRegistryItem {
+	if !ok || i == nil {
+		r.logger.Log(
+			"level", 2,
+			"action", "error on clear register",
+			"identifier", identifier,
+			"register-exist", ok,
+		)
 		return nil
 	}
+	r.logger.Log(
+		"level", 2,
+		"action", "clear registry item",
+		"identifier", identifier,
+		"client-name", i.ClientName,
+	)
 
 	if i.Hosts != nil {
 		for _, h := range i.Hosts {
@@ -194,7 +207,7 @@ func (r *registry) clear(identifier id.ID) *RegistryItem {
 		}
 	}
 
-	r.items[identifier] = voidRegistryItem
+	r.items[identifier] = nil
 
 	return i
 }

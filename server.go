@@ -14,6 +14,7 @@ import (
 	mylog "log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,8 @@ type ServerConfig struct {
 	// AutoSubscribe if enabled will automatically subscribe new clients on
 	// first call.
 	AutoSubscribe bool
+	// Address Pool enables Port AutoAssignation.
+	PortRange string
 	// TLSConfig specifies the tls configuration to use with tls.Listener.
 	TLSConfig *tls.Config
 	// Listener specifies optional listener for client connections. If nil
@@ -55,11 +58,17 @@ type Server struct {
 	httpClient *http.Client
 	logger     log.Logger
 	vhostMuxer *vhost.TLSMuxer
-	idname     string
+	PortPool   *AddrPool
 }
 
 // NewServer creates a new Server.
 func NewServer(config *ServerConfig) (*Server, error) {
+	pPool := &AddrPool{}
+	err := pPool.Init(config.PortRange)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create port range pool: %s", err)
+	}
+
 	listener, err := listener(config)
 	if err != nil {
 		return nil, fmt.Errorf("listener failed: %s", err)
@@ -72,6 +81,7 @@ func NewServer(config *ServerConfig) (*Server, error) {
 
 	s := &Server{
 		registry: newRegistry(logger),
+		PortPool: pPool,
 		config:   config,
 		listener: listener,
 		logger:   logger,
@@ -160,12 +170,13 @@ func (s *Server) disconnected(identifier id.ID) {
 	s.logger.Log(
 		"level", 1,
 		"action", "disconnected",
-		"name-id", s.idname,
+		//		"name-id", s.idname,
 		"identifier", identifier,
 	)
 
 	i := s.registry.clear(identifier)
 	if i == nil {
+		fmt.Printf("ERROR on Disconnect registry for indentifier %s is null", identifier)
 		return
 	}
 	for _, l := range i.Listeners {
@@ -173,10 +184,11 @@ func (s *Server) disconnected(identifier id.ID) {
 			"level", 2,
 			"action", "close listener",
 			"identifier", identifier,
-			"name-id", s.idname,
+			"client-name", i.ClientName,
 			"addr", l.Addr(),
 		)
 		l.Close()
+		s.PortPool.Release(identifier)
 	}
 }
 
@@ -352,10 +364,8 @@ func (s *Server) handleClient(conn net.Conn) {
 		goto reject
 	}
 
-	s.idname = tunnels.IdName
-
-	if s.idname != "" {
-		mylog.Printf("-- client name identifier %+v --", s.idname)
+	if tunnels.IdName != "" {
+		mylog.Printf("-- client name identifier %+v --", tunnels.IdName)
 	}
 
 	if len(tunnels.Tunnels) == 0 {
@@ -368,7 +378,7 @@ func (s *Server) handleClient(conn net.Conn) {
 		goto reject
 	}
 
-	if err = s.addTunnels(tunnels.Tunnels, identifier); err != nil {
+	if err = s.addTunnels(tunnels.IdName, tunnels.Tunnels, identifier); err != nil {
 		logger.Log(
 			"level", 2,
 			"msg", "handshake failed",
@@ -377,14 +387,10 @@ func (s *Server) handleClient(conn net.Conn) {
 		goto reject
 	}
 
-	if s.idname == "" {
-		s.idname = "unknown-name"
-	}
-
 	logger.Log(
 		"level", 1,
 		"action", "connected",
-		"name-id", s.idname,
+		"name-id", tunnels.IdName,
 	)
 
 	return
@@ -415,7 +421,7 @@ func (s *Server) notifyError(serverError error, identifier id.ID) {
 			"level", 2,
 			"action", "client error notification failed",
 			"identifier", identifier,
-			"name-id", s.idname,
+			//			"name-id", s.idname,
 		)
 		return
 	}
@@ -428,22 +434,55 @@ func (s *Server) notifyError(serverError error, identifier id.ID) {
 	s.httpClient.Do(req.WithContext(ctx))
 }
 
+func (s *Server) adrListenRegister(in string, id id.ID, cid string, portname string) (string, error) {
+
+	inarr := strings.Split(in, ":")
+	host := inarr[0]
+	port := inarr[1]
+	if port == "AUTO" {
+		port, err := s.PortPool.Acquire(id, cid, portname)
+		if err != nil {
+			return "", fmt.Errorf("Error on acquire port from port pool:%s", err)
+		}
+		addr := host + ":" + strconv.Itoa(port)
+
+		s.logger.Log(
+			"level", 1,
+			"action", "address auto assign",
+			"cliend-id", cid,
+			"portname", portname,
+			"addr", addr,
+		)
+		return addr, nil
+	}
+	return in, nil
+}
+
 // addTunnels invokes addHost or addListener based on data from proto.Tunnel. If
 // a tunnel cannot be added whole batch is reverted.
-func (s *Server) addTunnels(tunnels map[string]*proto.Tunnel, identifier id.ID) error {
+func (s *Server) addTunnels(remoteid string, tunnels map[string]*proto.Tunnel, identifier id.ID) error {
 	i := &RegistryItem{
-		Hosts:     []*HostAuth{},
-		Listeners: []net.Listener{},
+		Hosts:      []*HostAuth{},
+		Listeners:  []net.Listener{},
+		ClientName: remoteid,
 	}
 
 	var err error
+	var portnames []string
+
 	for name, t := range tunnels {
+		portnames = append(portnames, name)
 		switch t.Protocol {
 		case proto.HTTP:
 			i.Hosts = append(i.Hosts, &HostAuth{t.Host, NewAuth(t.Auth)})
 		case proto.TCP, proto.TCP4, proto.TCP6, proto.UNIX:
 			var l net.Listener
-			l, err = net.Listen(t.Protocol, t.Addr)
+			fmt.Printf("AAAAAAAAAAAAAAAAAAAAAADRRRRRRRRRRRRRRRRR %s\n", t.Addr)
+			addr, err := s.adrListenRegister(t.Addr, identifier, remoteid, name)
+			if err != nil {
+				goto rollback
+			}
+			l, err = net.Listen(t.Protocol, addr)
 			if err != nil {
 				goto rollback
 			}
@@ -452,7 +491,8 @@ func (s *Server) addTunnels(tunnels map[string]*proto.Tunnel, identifier id.ID) 
 				"level", 2,
 				"action", "open listener",
 				"identifier", identifier,
-				"name-id", s.idname,
+				"client-id", remoteid,
+				"port-name", name,
 				"addr", l.Addr(),
 			)
 
@@ -472,7 +512,8 @@ func (s *Server) addTunnels(tunnels map[string]*proto.Tunnel, identifier id.ID) 
 				"level", 2,
 				"action", "add SNI vhost",
 				"identifier", identifier,
-				"name-id", s.idname,
+				"client-id", remoteid,
+				"port-name", name,
 				"host", t.Host,
 			)
 
@@ -482,14 +523,15 @@ func (s *Server) addTunnels(tunnels map[string]*proto.Tunnel, identifier id.ID) 
 			goto rollback
 		}
 	}
+	i.ListenerNames = portnames
 
 	err = s.set(i, identifier)
 	if err != nil {
 		goto rollback
 	}
 
-	for _, l := range i.Listeners {
-		go s.listen(l, identifier)
+	for k, l := range i.Listeners {
+		go s.listen(l, identifier, i.ClientName, i.ListenerNames[k])
 	}
 
 	return nil
@@ -514,7 +556,7 @@ func (s *Server) Ping(identifier id.ID) (time.Duration, error) {
 	return s.connPool.Ping(identifier)
 }
 
-func (s *Server) listen(l net.Listener, identifier id.ID) {
+func (s *Server) listen(l net.Listener, identifier id.ID, cname string, pname string) {
 	addr := l.Addr().String()
 
 	for {
@@ -526,7 +568,8 @@ func (s *Server) listen(l net.Listener, identifier id.ID) {
 					"level", 2,
 					"action", "listener closed",
 					"identifier", identifier,
-					"name-id", s.idname,
+					"client-name", cname,
+					"port-name", pname,
 					"addr", addr,
 				)
 				return
@@ -536,7 +579,8 @@ func (s *Server) listen(l net.Listener, identifier id.ID) {
 				"level", 0,
 				"msg", "accept of connection failed",
 				"identifier", identifier,
-				"name-id", s.idname,
+				"client-name", cname,
+				"port-name", pname,
 				"addr", addr,
 				"err", err,
 			)
@@ -554,6 +598,7 @@ func (s *Server) listen(l net.Listener, identifier id.ID) {
 			err = keepAlive(tlsConn.Conn)
 
 		} else {
+			msg.ForwardedId = pname
 			msg.ForwardedHost = l.Addr().String()
 			err = keepAlive(conn)
 		}
@@ -563,7 +608,8 @@ func (s *Server) listen(l net.Listener, identifier id.ID) {
 				"level", 1,
 				"msg", "TCP keepalive for tunneled connection failed",
 				"identifier", identifier,
-				"name-id", s.idname,
+				"client-name", cname,
+				"port-name", pname,
 				"ctrlMsg", msg,
 				"err", err,
 			)
@@ -575,7 +621,8 @@ func (s *Server) listen(l net.Listener, identifier id.ID) {
 					"level", 0,
 					"msg", "proxy error",
 					"identifier", identifier,
-					"name-id", s.idname,
+					"client-name", cname,
+					"port-name", pname,
 					"ctrlMsg", msg,
 					"err", err,
 				)
@@ -667,7 +714,7 @@ func (s *Server) proxyConn(identifier id.ID, conn net.Conn, msg *proto.ControlMe
 		"level", 2,
 		"action", "proxy conn",
 		"identifier", identifier,
-		"name-id", s.idname,
+		//		"name-id", s.idname,
 		"ctrlMsg", msg,
 	)
 
@@ -717,7 +764,7 @@ func (s *Server) proxyConn(identifier id.ID, conn net.Conn, msg *proto.ControlMe
 		"level", 2,
 		"action", "proxy conn done",
 		"identifier", identifier,
-		"name-id", s.idname,
+		//		"name-id", s.idname,
 		"ctrlMsg", msg,
 	)
 
@@ -729,7 +776,7 @@ func (s *Server) proxyHTTP(identifier id.ID, r *http.Request, msg *proto.Control
 		"level", 2,
 		"action", "proxy HTTP",
 		"identifier", identifier,
-		"name-id", s.idname,
+		//		"name-id", s.idname,
 		"ctrlMsg", msg,
 	)
 
@@ -750,7 +797,7 @@ func (s *Server) proxyHTTP(identifier id.ID, r *http.Request, msg *proto.Control
 				"level", 0,
 				"msg", "proxy error",
 				"identifier", identifier,
-				"name-id", s.idname,
+				//				"name-id", s.idname,
 				"ctrlMsg", msg,
 				"err", err,
 			)
@@ -760,7 +807,7 @@ func (s *Server) proxyHTTP(identifier id.ID, r *http.Request, msg *proto.Control
 			"level", 3,
 			"action", "transferred",
 			"identifier", identifier,
-			"name-id", s.idname,
+			//			"name-id", s.idname,
 			"bytes", cw.count,
 			"dir", "user to client",
 			"dst", r.Host,
@@ -781,7 +828,7 @@ func (s *Server) proxyHTTP(identifier id.ID, r *http.Request, msg *proto.Control
 		"level", 2,
 		"action", "proxy HTTP done",
 		"identifier", identifier,
-		"name-id", s.idname,
+		//		"name-id", s.idname,
 		"ctrlMsg", msg,
 		"status code", resp.StatusCode,
 	)

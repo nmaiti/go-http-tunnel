@@ -16,6 +16,7 @@ const (
 	HeaderAction         = "X-Action"
 	HeaderForwardedHost  = "X-Forwarded-Host"
 	HeaderForwardedProto = "X-Forwarded-Proto"
+	HeaderForwardedId    = "X-Forwarded-Id"
 )
 
 // Known actions.
@@ -40,6 +41,7 @@ const (
 // routes requests to backend services.
 type ControlMessage struct {
 	Action         string
+	ForwardedId    string
 	ForwardedHost  string
 	ForwardedProto string
 	RemoteAddr     string
@@ -51,6 +53,7 @@ func ReadControlMessage(r *http.Request) (*ControlMessage, error) {
 		Action:         r.Header.Get(HeaderAction),
 		ForwardedHost:  r.Header.Get(HeaderForwardedHost),
 		ForwardedProto: r.Header.Get(HeaderForwardedProto),
+		ForwardedId:    r.Header.Get(HeaderForwardedId),
 		RemoteAddr:     r.RemoteAddr,
 	}
 
@@ -65,6 +68,9 @@ func ReadControlMessage(r *http.Request) (*ControlMessage, error) {
 	if msg.ForwardedProto == "" {
 		missing = append(missing, HeaderForwardedProto)
 	}
+	if msg.ForwardedId == "" {
+		missing = append(missing, HeaderForwardedId)
+	}
 
 	if len(missing) != 0 {
 		return nil, fmt.Errorf("missing headers: %s", missing)
@@ -78,4 +84,5 @@ func (c *ControlMessage) WriteToHeader(h http.Header) {
 	h.Set(HeaderAction, string(c.Action))
 	h.Set(HeaderForwardedHost, c.ForwardedHost)
 	h.Set(HeaderForwardedProto, c.ForwardedProto)
+	h.Set(HeaderForwardedId, c.ForwardedId)
 }

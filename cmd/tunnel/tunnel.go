@@ -180,7 +180,8 @@ func proxy(m map[string]*Tunnel, logger log.Logger) tunnel.ProxyFunc {
 	httpURL := make(map[string]*url.URL)
 	tcpAddr := make(map[string]string)
 
-	for _, t := range m {
+	for v, t := range m {
+		fmt.Printf("Creating proxy for %#+v/%#+v\n", v, t)
 		switch t.Protocol {
 		case proto.HTTP:
 			u, err := url.Parse(t.Addr)
@@ -189,7 +190,8 @@ func proxy(m map[string]*Tunnel, logger log.Logger) tunnel.ProxyFunc {
 			}
 			httpURL[t.Host] = u
 		case proto.TCP, proto.TCP4, proto.TCP6:
-			tcpAddr[t.RemoteAddr] = t.Addr
+			fmt.Printf("Setting config for %s | REMOTE: %s | LOCAL: %s\n", v, t.RemoteAddr, t.Addr)
+			tcpAddr[v] = t.Addr
 		case proto.SNI:
 			tcpAddr[t.Host] = t.Addr
 		}

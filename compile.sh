@@ -1,7 +1,7 @@
 #!/bin/bash
 
 DIR="./build"
-OS="darwin"
+OS="linux"
 ARCH="amd64"
 
 if [ ! -d "$DIR" ]; then
