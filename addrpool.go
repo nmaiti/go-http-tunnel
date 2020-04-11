@@ -5,12 +5,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/mmatczuk/go-http-tunnel/id"
 )
 
 type RemoteID struct {
-	ConnID   id.ID
+	//ConnID   id.ID
 	ClientID string
 	PortName string
 }
@@ -49,7 +47,7 @@ func (ap *AddrPool) Init(rang string) error {
 
 }
 
-func (ap *AddrPool) Acquire(id id.ID, cname string, pname string) (int, error) {
+func (ap *AddrPool) Acquire(cname string, pname string) (int, error) {
 	ap.mutex.Lock()
 	defer ap.mutex.Unlock()
 	var assigned int
@@ -61,7 +59,6 @@ func (ap *AddrPool) Acquire(id id.ID, cname string, pname string) (int, error) {
 			//empty
 			ap.used++
 			ap.addrMap[i] = &RemoteID{
-				ConnID:   id,
 				ClientID: cname,
 				PortName: pname,
 			}
@@ -76,14 +73,14 @@ func (ap *AddrPool) Acquire(id id.ID, cname string, pname string) (int, error) {
 
 }
 
-func (ap *AddrPool) Release(id id.ID) error {
+func (ap *AddrPool) Release(id string) error {
 	ap.mutex.Lock()
 	defer ap.mutex.Unlock()
 	found := false
 	// search for the first unnused port
 	for i := ap.first; i < ap.last; i++ {
 		cur := ap.addrMap[i]
-		if cur != nil && cur.ConnID.Compare(id) == 0 {
+		if cur != nil && cur.ClientID == id {
 			//empty
 			ap.used--
 			ap.addrMap[i] = nil

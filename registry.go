@@ -9,7 +9,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/mmatczuk/go-http-tunnel/id"
 	"github.com/mmatczuk/go-http-tunnel/log"
 )
 
@@ -20,6 +19,7 @@ type RegistryItem struct {
 	Listeners     []net.Listener
 	ListenerNames []string
 	ClientName    string
+	ClientID      string
 }
 
 // HostAuth holds host and authentication info.
@@ -29,12 +29,13 @@ type HostAuth struct {
 }
 
 type hostInfo struct {
-	identifier id.ID
+	identifier string
 	auth       *Auth
 }
 
 type registry struct {
-	items  map[id.ID]*RegistryItem
+	source map[string]*RegistryItem //Origin Address based on host:port
+	items  map[string]*RegistryItem //Client name
 	hosts  map[string]*hostInfo
 	mu     sync.RWMutex
 	logger log.Logger
@@ -46,81 +47,106 @@ func newRegistry(logger log.Logger) *registry {
 	}
 
 	return &registry{
-		items:  make(map[id.ID]*RegistryItem),
+		items:  make(map[string]*RegistryItem),
+		source: make(map[string]*RegistryItem),
 		hosts:  make(map[string]*hostInfo),
 		logger: logger,
 	}
 }
 
-//var voidRegistryItem = &RegistryItem{}
+func (r *registry) PreSubscribe(origaddr string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.source[origaddr]; ok {
+		r.logger.Log(
+			"level", 0,
+			"action", "error on pre-subscribe to registry this entry already exist",
+			"identifier", origaddr,
+		)
+		return
+	}
+	r.source[origaddr] = &RegistryItem{ClientID: origaddr}
+}
 
 // Subscribe allows to connect client with a given identifier.
-func (r *registry) Subscribe(identifier id.ID, idname string) {
+func (r *registry) Subscribe(cname string, origaddr string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, ok := r.items[identifier]; ok {
+	if _, ok := r.items[cname]; ok {
+		r.logger.Log(
+			"level", 0,
+			"action", "error on subscribe to registry this entry already exist",
+			"identifier", origaddr,
+		)
 		return
 	}
+	reg := r.source[origaddr]
+	reg.ClientName = cname
+	//fmt.Printf("SUBSCRIBE REGISTRY Client Name: [%s] Client ID: [%s] value : %+v \n", cname, origaddr, reg)
+	r.items[cname] = reg
+	r.logger.Log(
+		"level", 2,
+		"action", "REGISTRY SUBSCRIBE",
+		"client-name", cname,
+		"client-id", origaddr,
+		"data", reg,
+	)
+}
 
-	if idname == "" {
-		r.logger.Log(
-			"level", 1,
-			"action", "subscribe",
-			"identifier", identifier,
-		)
-	} else {
-		r.logger.Log(
-			"level", 1,
-			"action", "subscribe",
-			"identifier", identifier,
-			"id-name", idname,
-		)
+// GetID returns the ID for this client
+func (r *registry) GetID(cname string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	v, ok := r.items[cname]
+	if !ok {
+		fmt.Errorf("NO ID in %s\n", cname)
+		return ""
 	}
-
-	r.items[identifier] = &RegistryItem{ClientName: idname}
+	return v.ClientID
 }
 
 // IsSubscribed returns true if client is subscribed.
-func (r *registry) IsSubscribed(identifier id.ID) bool {
+/*func (r *registry) IsSubscribed(identifier string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	fmt.Printf("IS SUBSCRIBED REGISTRY [%s] \n", identifier)
+
 	_, ok := r.items[identifier]
 	return ok
-}
+}*/
 
 // Subscriber returns client identifier assigned to given host.
-func (r *registry) Subscriber(hostPort string) (id.ID, *Auth, bool) {
+func (r *registry) Subscriber(hostPort string) (string, *Auth, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
 	h, ok := r.hosts[trimPort(hostPort)]
 	if !ok {
-		return id.ID{}, nil, false
+		return "", nil, false
 	}
+	fmt.Printf("SUBSCRIBER REGISTRY [%s] value : %+v \n", hostPort, h)
 
 	return h.identifier, h.auth, ok
 }
 
 // Unsubscribe removes client from registry and returns it's RegistryItem.
-func (r *registry) Unsubscribe(identifier id.ID, idname string) *RegistryItem {
+func (r *registry) Unsubscribe(identifier string, idname string) *RegistryItem {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	i, ok := r.items[identifier]
 	if !ok {
+		fmt.Printf("UNSUBSCRIBE REGISTRY error not found ID [%s] Idname [%s] value : %+v \n", identifier, idname, i)
 		return nil
 	}
-
-	if idname == "" {
-		idname = "UNKNOWN"
-	}
+	fmt.Printf("UNSUBSCRIBE REGISTRY Identifier [%s] Idname [%s] value : %+v \n", identifier, idname, i)
 
 	r.logger.Log(
 		"level", 1,
-		"action", "unsubscribe",
+		"action", "REGISTRY UNSUBSCRIBE",
 		"identifier", identifier,
 		"id-name", idname,
+		"data", i,
 	)
 
 	if i.Hosts != nil {
@@ -134,26 +160,39 @@ func (r *registry) Unsubscribe(identifier id.ID, idname string) *RegistryItem {
 	return i
 }
 
-func (r *registry) set(i *RegistryItem, identifier id.ID) error {
+func (r *registry) set(i *RegistryItem, identifier string) error {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	//j, ok := r.items[identifier]
 	j, ok := r.items[identifier]
 	if !ok {
-		fmt.Printf("ERROR in Registry Set: ITEM %#+v\n", j)
+		r.logger.Log(
+			"level", 1,
+			"action", "REGISTRY SET ERROR: client-name not found",
+			"client-id", i.ClientID,
+			"client-name", identifier,
+			"data", i,
+		)
 		return errClientNotSubscribed
 	}
+	r.logger.Log(
+		"level", 2,
+		"action", "REGISTRY SET (OLD FOUND)",
+		"client-id", j.ClientID,
+		"client-name", identifier,
+		"data", j,
+	)
 
-	/*if strings.Compare(j.ClientName, i.ClientName) == 0 {
-		return fmt.Errorf("attempt to overwrite registry item [%s] for [%s]", i.ClientName, j.ClientName)
-	}*/
+	//fmt.Printf("OLD REGISTRY Identifier [%s] value : %+v \n", identifier, j)
+	i.ClientID = j.ClientID
 
 	r.logger.Log(
 		"level", 2,
-		"action", "set registry item",
-		"identifier", identifier,
+		"action", "REGISTRY SET (NEW SET)",
+		"client-id", i.ClientID,
+		"client-name", identifier,
+		"data", i,
 	)
 
 	if i.Hosts != nil {
@@ -173,18 +212,20 @@ func (r *registry) set(i *RegistryItem, identifier id.ID) error {
 			}
 		}
 	}
-
+	//fmt.Printf("SET REGISTRY Identifier [%s] value : %+v \n", identifier, i)
 	r.items[identifier] = i
+	r.source[i.ClientID] = i
 
 	return nil
 }
 
-func (r *registry) clear(identifier id.ID) *RegistryItem {
+func (r *registry) clear(identifier string) *RegistryItem {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	i, ok := r.items[identifier]
+	//i, ok := r.items[identifier]
+	i, ok := r.source[identifier]
 	if !ok || i == nil {
 		r.logger.Log(
 			"level", 2,
@@ -194,21 +235,36 @@ func (r *registry) clear(identifier id.ID) *RegistryItem {
 		)
 		return nil
 	}
+	//fmt.Printf("CLEAR REGISTRY Identifier [%s] value : %+v \n", identifier, i)
+
 	r.logger.Log(
 		"level", 2,
-		"action", "clear registry item",
+		"action", "REGISTRY CLEAR item",
 		"identifier", identifier,
 		"client-name", i.ClientName,
+		"client-id", i.ClientID,
+		"data", i,
 	)
 
 	if i.Hosts != nil {
 		for _, h := range i.Hosts {
+			r.logger.Log(
+				"level", 2,
+				"action", "REGISTRI CLEAR (delete hosts)",
+				"identifier", identifier,
+				"client-name", i.ClientName,
+				"client-id", i.ClientID,
+				"host", h.Host,
+				"trimport", trimPort(h.Host),
+			)
 			delete(r.hosts, trimPort(h.Host))
 		}
 	}
 
-	r.items[identifier] = nil
-
+	r.source[identifier] = nil
+	r.items[i.ClientName] = nil
+	delete(r.source, identifier)
+	delete(r.items, i.ClientName)
 	return i
 }
 

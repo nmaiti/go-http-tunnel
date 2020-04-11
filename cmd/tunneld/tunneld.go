@@ -11,12 +11,10 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
 
 	"golang.org/x/net/http2"
 
 	tunnel "github.com/mmatczuk/go-http-tunnel"
-	"github.com/mmatczuk/go-http-tunnel/id"
 	"github.com/mmatczuk/go-http-tunnel/log"
 )
 
@@ -37,33 +35,16 @@ func main() {
 		fatal("failed to configure tls: %s", err)
 	}
 
-	autoSubscribe := opts.clients == ""
-
 	// setup server
 	server, err := tunnel.NewServer(&tunnel.ServerConfig{
-		Addr:          opts.tunnelAddr,
-		SNIAddr:       opts.sniAddr,
-		PortRange:     opts.portRange,
-		AutoSubscribe: autoSubscribe,
-		TLSConfig:     tlsconf,
-		Logger:        logger,
+		Addr:      opts.tunnelAddr,
+		SNIAddr:   opts.sniAddr,
+		PortRange: opts.portRange,
+		TLSConfig: tlsconf,
+		Logger:    logger,
 	})
 	if err != nil {
 		fatal("failed to create server: %s", err)
-	}
-
-	if !autoSubscribe {
-		for _, c := range strings.Split(opts.clients, ",") {
-			if c == "" {
-				fatal("empty client id")
-			}
-			identifier := id.ID{}
-			err := identifier.UnmarshalText([]byte(c))
-			if err != nil {
-				fatal("invalid identifier %q: %s", c, err)
-			}
-			server.Subscribe(identifier, "")
-		}
 	}
 
 	// start HTTP
