@@ -13,6 +13,8 @@ require (
 	github.com/golang/dep v0.5.4 // indirect
 	github.com/golang/mock v1.2.0
 	github.com/golang/protobuf v1.3.3 // indirect
+	github.com/gorilla/handlers v1.4.2
+	github.com/gorilla/mux v1.7.4
 	github.com/hashicorp/go-version v1.2.0 // indirect
 	github.com/inconshreveable/go-vhost v0.0.0-20160627193104-06d84117953b
 	github.com/jmank88/nuts v0.4.0 // indirect
@@ -21,9 +23,9 @@ require (
 	github.com/pelletier/go-toml v1.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sdboyer/constext v0.0.0-20170321163424-836a14457353 // indirect
-	golang.org/x/net v0.0.0-20171123081856-c7086645de24
+	golang.org/x/net v0.0.0-20190603091049-60506f45cf65
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
 	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae // indirect
-	golang.org/x/text v0.1.1-0.20171102192421-88f656faf3f3 // indirect
+	google.golang.org/appengine v1.6.5
 	gopkg.in/yaml.v2 v2.2.8
 )

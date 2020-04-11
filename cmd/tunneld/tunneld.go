@@ -18,7 +18,14 @@ import (
 	"github.com/mmatczuk/go-http-tunnel/log"
 )
 
+var (
+	logger log.Logger
+	server *tunnel.Server
+)
+
 func main() {
+	var err error
+
 	opts := parseArgs()
 
 	if opts.version {
@@ -28,7 +35,7 @@ func main() {
 
 	fmt.Println(banner)
 
-	logger := log.NewFilterLogger(log.NewStdLogger(), opts.logLevel)
+	logger = log.NewFilterLogger(log.NewStdLogger(), opts.logLevel)
 
 	tlsconf, err := tlsConfig(opts)
 	if err != nil {
@@ -36,7 +43,7 @@ func main() {
 	}
 
 	// setup server
-	server, err := tunnel.NewServer(&tunnel.ServerConfig{
+	server, err = tunnel.NewServer(&tunnel.ServerConfig{
 		Addr:      opts.tunnelAddr,
 		SNIAddr:   opts.sniAddr,
 		PortRange: opts.portRange,
@@ -77,6 +84,15 @@ func main() {
 
 			fatal("failed to start HTTPS: %s", s.ListenAndServeTLS(opts.tlsCrt, opts.tlsKey))
 		}()
+	}
+
+	if opts.apiAddr != "" {
+		logger.Log(
+			"level", 1,
+			"action", "start http",
+			"addr", opts.httpAddr,
+		)
+		go initAPIServer(opts.apiAddr)
 	}
 
 	server.Start()
