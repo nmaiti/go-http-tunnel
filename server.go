@@ -69,7 +69,7 @@ type Server struct {
 	vhostMuxer *vhost.TLSMuxer
 }
 
-type ClientFilename sruct{
+type ClientFilename struct{
 	filename string
 }
 func (clientfile ClientFilename) CheckRegistration(id string) bool {
