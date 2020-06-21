@@ -282,7 +282,7 @@ func (s *Server) handleClient(conn net.Conn) {
 		if s.config.RegChecker.CheckRegistration(identifier) {
 			if !s.IsSubscribed(identifier) {
 				logger.Log("level", 2,
-					"msg", "client not subscribed but id found -NBM",
+					"msg", "client not subscribed but id found -NBM","err",err)
 				s.Subscribe(identifier)
 			}
 		} else {
