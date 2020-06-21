@@ -19,9 +19,9 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/inconshreveable/go-vhost"
-	"github.com/mmatczuk/go-http-tunnel/id"
-	"github.com/mmatczuk/go-http-tunnel/log"
-	"github.com/mmatczuk/go-http-tunnel/proto"
+	"github.com/nmaiti/go-http-tunnel/id"
+	"github.com/nmaiti/go-http-tunnel/log"
+	"github.com/nmaiti/go-http-tunnel/proto"
 )
 
 // RegChecker - this interface allows us to plug in an external

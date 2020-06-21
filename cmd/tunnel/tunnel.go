@@ -17,10 +17,10 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cenkalti/backoff"
-	"github.com/mmatczuk/go-http-tunnel"
-	"github.com/mmatczuk/go-http-tunnel/id"
-	"github.com/mmatczuk/go-http-tunnel/log"
-	"github.com/mmatczuk/go-http-tunnel/proto"
+	"github.com/nmaiti/go-http-tunnel"
+	"github.com/nmaiti/go-http-tunnel/id"
+	"github.com/nmaiti/go-http-tunnel/log"
+	"github.com/nmaiti/go-http-tunnel/proto"
 )
 
 func main() {

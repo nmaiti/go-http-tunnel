@@ -12,7 +12,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/mmatczuk/go-http-tunnel/proto"
+	"github.com/nmaiti/go-http-tunnel/proto"
 )
 
 // Default backoff configuration.
