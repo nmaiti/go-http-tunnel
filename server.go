@@ -75,8 +75,8 @@ type ClientFilename struct{
 func (clientfile ClientFilename) CheckRegistration(id id.ID) bool {
 
 //		if id != "" {
-			fmt.Printf("Requesting client:%s", id)
-			fmt.Printf("File to check %s", clientfile.filename)
+			fmt.Printf("Requesting client:%s\n", id)
+			fmt.Printf("File to check %s\n", clientfile.filename)
 			return true;
 //		}
 //		return true
@@ -300,7 +300,7 @@ func (s *Server) handleClient(conn net.Conn) {
 		if s.config.RegChecker.CheckRegistration(identifier) {
 			if !s.IsSubscribed(identifier) {
 				logger.Log("level", 2,
-					"msg", "client not subscribed but id found -NBM","err",err)
+					"msg", "client not subscribed but id found -NBM","err\n",err)
 				s.Subscribe(identifier)
 			}
 		} else {
