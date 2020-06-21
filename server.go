@@ -74,12 +74,12 @@ type ClientFilename struct{
 }
 func (clientfile ClientFilename) CheckRegistration(id id.ID) bool {
 
-		if id != "" {
+//		if id != "" {
 			fmt.Printf("Requesting client:%s", id)
 			fmt.Printf("File to check %s", clientfile.filename)
 			return true;
-		}
-		return true
+//		}
+//		return true
 }
 
 
