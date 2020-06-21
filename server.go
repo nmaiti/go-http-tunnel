@@ -72,7 +72,7 @@ type Server struct {
 type ClientFilename struct{
 	filename string
 }
-func (clientfile ClientFilename) CheckRegistration(id  [32]byte) bool {
+func (clientfile ClientFilename) CheckRegistration(id id.ID) bool {
 
 		if id != "" {
 			fmt.Printf("Requesting client:%s", id)
