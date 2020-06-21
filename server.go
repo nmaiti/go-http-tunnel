@@ -69,6 +69,21 @@ type Server struct {
 	vhostMuxer *vhost.TLSMuxer
 }
 
+type ClientFilename sruct{
+	filename string
+}
+func (clientfile ClientFilename) CheckRegistration(id string) bool {
+
+		if id != nil {
+			fmt.Printf("Requesting client:%s", id)
+			fmt.Printf("File to check %s", clientfile.file)
+			return true;
+		}
+
+}
+
+
+
 // NewServer creates a new Server.
 func NewServer(config *ServerConfig) (*Server, error) {
 	listener, err := listener(config)
@@ -88,6 +103,9 @@ func NewServer(config *ServerConfig) (*Server, error) {
 		logger:   logger,
 	}
 
+	if config.RegChecker == nil {
+		config.RegChecker = ClientFilename{"testclient"}
+	}
 	t := &http2.Transport{}
 	pool := newConnPool(t, s.disconnected)
 	t.ConnPool = pool
