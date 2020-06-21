@@ -24,6 +24,16 @@ import (
 	"github.com/mmatczuk/go-http-tunnel/proto"
 )
 
+// RegChecker - this interface allows us to plug in an external
+// checker for a registry on client connect.
+type RegChecker interface {
+
+	// CheckRegistration - if returns true, it will auto-register.
+	// a client.  This allows us to hook into a registration database
+	// instead of keeping all possible registrations in memory.
+	CheckRegistration(id.ID) bool
+}
+
 // ServerConfig defines configuration for the Server.
 type ServerConfig struct {
 	// Addr is TCP address to listen for client connections. If empty ":0"
@@ -41,6 +51,9 @@ type ServerConfig struct {
 	Logger log.Logger
 	// Addr is TCP address to listen for TLS SNI connections
 	SNIAddr string
+
+	// Optional RegChecker implementation, for doing dynamic registrations.
+	RegChecker RegChecker
 }
 
 // Server is responsible for proxying public connections to the client over a
@@ -262,9 +275,27 @@ func (s *Server) handleClient(conn net.Conn) {
 
 	logger = logger.With("identifier", identifier)
 
-	if s.config.AutoSubscribe {
-		s.Subscribe(identifier)
+//	if s.config.AutoSubscribe {
+//		s.Subscribe(identifier)
+//	} else if !s.IsSubscribed(identifier) {
+	if s.config.RegChecker != nil {
+		if s.config.RegChecker.CheckRegistration(identifier) {
+			if !s.IsSubscribed(identifier) {
+				logger.Log("level", 2,
+					"msg", "client not subscribed but id found -NBM",
+				s.Subscribe(identifier)
+			}
+		} else {
+			if s.IsSubscribed(identifier) {
+				s.Unsubscribe(identifier)
+			}
+			logger.Log("level", 2,
+				"msg", "client not subscribed",
+			)
+			goto reject
+		}
 	} else if !s.IsSubscribed(identifier) {
+
 		logger.Log(
 			"level", 2,
 			"msg", "unknown client",
